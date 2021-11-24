@@ -21,6 +21,8 @@ jobs:
         run: go get -t unziploc
       - name: Run linters
         uses: golangci/golangci-lint-action@v2
+        with:
+          version: latest
 
   test:
     strategy:
@@ -37,7 +39,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Run tests
-        run: go get -t unziploc && sudo go test -v -covermode=count
+        run: go get -t unziploc && sudo -E go test -v -covermode=count
 
   coverage:
     runs-on: ubuntu-latest
@@ -53,7 +55,7 @@ jobs:
         run: go get -t unziploc
       - name: Calc coverage
         run: |
-          go get -t unziploc && sudo go test -v -covermode=count -coverprofile=coverage.out
+          go get -t unziploc && sudo -E go test -v -covermode=count -coverprofile=coverage.out
       - name: Convert coverage.out to coverage.lcov
         uses: jandelgado/gcov2lcov-action@v1.0.6
       - name: Coveralls
