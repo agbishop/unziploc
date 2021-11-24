@@ -1,6 +1,6 @@
 package main
 
 func main() {
-	s := New()
-	s.Do()
+	s := New(nil)
+	s.Start()
 }

@@ -1,43 +1,47 @@
 package main
 
 import (
-	"flag"
+	"context"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/gobuffalo/envy"
 	"github.com/mholt/archiver/v3"
 	"github.com/sirupsen/logrus"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-	"time"
 )
 
 type (
 	WorkerData struct {
 		Path    string
 		Start   time.Time
+		Expire  time.Time
 		Process bool
 	}
 	Service struct {
-		mux  sync.Mutex
-		log  logrus.FieldLogger
-		data map[string]*WorkerData
+		mux           sync.Mutex
+		log           logrus.FieldLogger
+		Data          map[string]*WorkerData
+		daemonCtx     context.Context
+		daemonCtxStop context.CancelFunc
 		Config
-	}
-	Config struct {
-		p                   string
-		paths               []string
-		writeDelayDuration  time.Duration
-		tickerTimerDuration time.Duration
 	}
 )
 
-func New() *Service {
+func New(c *Config) *Service {
 	s := Service{}
-	s.log = logrus.New()
-	s.data = make(map[string]*WorkerData)
+	debug, _ := strconv.ParseBool(envy.Get("DEBUG", "true"))
+	logger := logrus.New()
+	if debug {
+		logger.SetLevel(logrus.DebugLevel)
+	}
+	s.log = logger
+	s.Data = map[string]*WorkerData{}
 	ticker := time.NewTimer(s.tickerTimerDuration)
 	go func() {
 		for {
@@ -47,47 +51,23 @@ func New() *Service {
 			}
 		}
 	}()
-	s.Config = s.init()
+	if c != nil {
+		s.Config = *c
+	} else {
+		s.Config = s.cli()
+	}
+
 	return &s
 }
 
 const (
-	pathsENV       = "PATHS"
-	writeDelayENV  = "WRITE_DELAY"
-	timerTickerENV = "TIMER_TICKER"
+	pathsENV         = "PATHS"
+	writeDelayENV    = "WRITE_DELAY"
+	pathExpireDurENV = "PATH_EXPIRE_DURATION"
+	timerTickerENV   = "TIMER_TICKER"
 )
 
-func (s *Service) init() Config {
-	c := Config{}
-	flag.StringVar(&c.p, "paths", envy.Get(pathsENV, ""), "comma seperated list of directories to watch")
-
-	writeDelay, err := time.ParseDuration(envy.Get(writeDelayENV, "1m"))
-	if err != nil {
-		s.log.WithError(err).Fatal("failed to parse write delay")
-	}
-	flag.DurationVar(&c.writeDelayDuration, "write-delay", writeDelay, "delay to wait after the last write is detected. defaults to 1m")
-
-	tickerDelay, err := time.ParseDuration(envy.Get(timerTickerENV, "10s"))
-	if err != nil {
-		s.log.WithError(err).Fatal("failed to parse ticker timer")
-	}
-	flag.DurationVar(&c.tickerTimerDuration, "timer-ticker", tickerDelay, "how fast to run the ticker timer. defaults to 10s")
-
-	flag.Parse()
-	if c.p == "" {
-		s.log.Fatalf("path required")
-	}
-	c.paths = strings.Split(strings.TrimSpace(c.p), ",")
-	for i := range c.paths {
-		c.paths[i] = strings.TrimSpace(c.paths[i])
-		if exists, _ := isExists(c.paths[i]); !exists {
-			s.log.Fatalf("Dir %s doesn't exist", c.paths[i])
-		}
-	}
-	return c
-}
-
-func isExists(path string) (bool, error) {
+func IsPathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true, nil
@@ -98,8 +78,13 @@ func isExists(path string) (bool, error) {
 	return false, err
 }
 
-func (s *Service) Do() {
+func (s *Service) Stop() {
+	s.daemonCtxStop()
+}
+
+func (s *Service) Start() {
 	s.log.Infof("Service started. Watching paths %s", s.paths)
+	s.daemonCtx, s.daemonCtxStop = context.WithCancel(context.Background())
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		s.log.Fatal(err)
@@ -110,9 +95,12 @@ func (s *Service) Do() {
 		}
 	}()
 	done := make(chan bool)
-	go func() {
+	go func(ctx context.Context) {
 		for {
 			select {
+			case <-ctx.Done(): // if cancel() execute
+				<-done
+				return
 			case event, ok := <-watcher.Events:
 				if !ok {
 					return
@@ -130,21 +118,24 @@ func (s *Service) Do() {
 				s.log.WithError(err).Errorf("fsnotify failure")
 			}
 		}
-	}()
+	}(s.daemonCtx)
 	for i := range s.paths {
-		err = watcher.Add(s.paths[i])
+		if err := watcher.Add(s.paths[i]); err != nil {
+			s.log.Fatal(err)
+		}
 	}
-	if err != nil {
-		s.log.Fatal(err)
-	}
+
 	<-done
 }
 
 func (s *Service) CheckAndUnzip(ticker *time.Timer, z time.Time) {
 	s.mux.Lock()
-	for path, d := range s.data {
-		if z.After(d.Start) && !s.data[path].Process {
-			s.data[path].Process = true
+	for path, d := range s.Data {
+		if z.After(d.Expire) {
+			s.log.Infof("path %s expired", path)
+			delete(s.Data, path)
+		} else if z.After(d.Start) && !s.Data[path].Process {
+			s.Data[path].Process = true
 			go s.ProcessNewRarFile(path)
 		}
 	}
@@ -153,7 +144,7 @@ func (s *Service) CheckAndUnzip(ticker *time.Timer, z time.Time) {
 }
 
 func validSuffix() []string {
-	return []string{"rar", "tar"}
+	return []string{"rar", "tar", "zip"}
 }
 
 func (s *Service) ProcessNewRarFile(path string) {
@@ -161,7 +152,7 @@ func (s *Service) ProcessNewRarFile(path string) {
 	suffixes := validSuffix()
 	walkErr := filepath.Walk(path, func(p string, info fs.FileInfo, err error) error {
 		for i := range suffixes {
-			if strings.HasSuffix(p, suffixes[i]) {
+			if strings.HasSuffix(p, suffixes[i]) && !info.IsDir() {
 				return archiver.Unarchive(p, path)
 			}
 		}
@@ -171,16 +162,19 @@ func (s *Service) ProcessNewRarFile(path string) {
 		s.log.Errorf("Walk Err %s", walkErr)
 	}
 	s.mux.Lock()
-	delete(s.data, path)
+	s.log.Infof("Finished processing %s", path)
+	delete(s.Data, path)
 	s.mux.Unlock()
 }
 
 func (s *Service) NewEvent(event fsnotify.Event) {
 	s.log.Debugf("fsEvent %s", event.Name)
 	s.mux.Lock()
-	s.data[event.Name] = &WorkerData{
-		Path:  event.Name,
-		Start: time.Now().Add(s.writeDelayDuration),
+	now := time.Now()
+	s.Data[event.Name] = &WorkerData{
+		Path:   event.Name,
+		Start:  now.Add(s.writeDelayDuration),
+		Expire: now.Add(s.pathExpireDuration),
 	}
 	s.mux.Unlock()
 }
@@ -188,10 +182,12 @@ func (s *Service) NewEvent(event fsnotify.Event) {
 func (s *Service) SetPathEventStart(event fsnotify.Event) {
 	s.log.Debugf("reset time %s", event.Name)
 	s.mux.Lock()
-	if data, ok := s.data[event.Name]; ok {
+	if data, ok := s.Data[event.Name]; ok {
 		s.log.Debugf("setting time for %s", event.Name)
+		now := time.Now()
 		if !data.Process {
-			s.data[event.Name].Start = time.Now().Add(s.writeDelayDuration)
+			s.Data[event.Name].Start = now.Add(s.writeDelayDuration)
+			s.Data[event.Name].Expire = now.Add(s.pathExpireDuration)
 		}
 	}
 	s.mux.Unlock()
