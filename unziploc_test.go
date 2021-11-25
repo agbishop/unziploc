@@ -84,9 +84,9 @@ func TestExpire(t *testing.T) {
 	s := New(&Config{
 		p:                   path,
 		paths:               []string{path},
-		writeDelayDuration:  time.Millisecond * 100,
+		writeDelayDuration:  time.Second,
 		tickerTimerDuration: time.Millisecond * 100,
-		pathExpireDuration:  time.Millisecond * 500,
+		pathExpireDuration:  time.Second * 3,
 	})
 	go s.Start()
 	time.Sleep(time.Second)
@@ -100,7 +100,7 @@ func TestExpire(t *testing.T) {
 	tracking, ok := s.Data[tmpDataDir]
 	assert.NotNil(t, tracking)
 	assert.True(t, ok)
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 4)
 	dne, ok := s.Data[tmpDataDir]
 	assert.Nil(t, dne)
 	assert.False(t, ok)

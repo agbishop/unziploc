@@ -152,9 +152,14 @@ func (s *Service) unzipWithTmpDir(basePath, archivePath string, info fs.FileInfo
 			return err
 		}
 		unzipDir = filepath.Join(tmpDir, "extracted")
-		os.MkdirAll(unzipDir, os.ModeDir)
+		if err := os.MkdirAll(unzipDir, os.ModeDir); err != nil {
+			return err
+		}
 		defer func() {
-			os.RemoveAll(tmpDir)
+			if err := os.RemoveAll(tmpDir); err != nil {
+				s.log.WithError(err).Error("clean up err")
+			}
+
 		}()
 	}
 	if err := archiver.Unarchive(archivePath, unzipDir); err != nil {
@@ -164,12 +169,14 @@ func (s *Service) unzipWithTmpDir(basePath, archivePath string, info fs.FileInfo
 		targetPath := filepath.Join(basePath, "extracted")
 		if err := os.Rename(unzipDir, targetPath); err != nil {
 			s.log.WithError(err).Warnf("failed to link, attempting copy")
-			filepath.Walk(unzipDir, func(path string, info fs.FileInfo, err error) error {
+			err = filepath.Walk(unzipDir, func(path string, info fs.FileInfo, err error) error {
 				if strings.HasSuffix(path, "extracted") {
 					return nil
 				}
 				if info.IsDir() {
-					os.MkdirAll(info.Name(), os.ModeDir)
+					if err := os.MkdirAll(info.Name(), os.ModeDir); err != nil {
+						return err
+					}
 				} else {
 					origPath := filepath.Clean(strings.ReplaceAll(path, unzipDir, targetPath))
 					copyPath := path + uuid.New().String()
