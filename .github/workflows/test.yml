@@ -18,11 +18,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: deps
-        run: go get -t unziploc
+        run: sudo -E go get -t unziploc
       - name: Run linters
         uses: golangci/golangci-lint-action@v2
         with:
           version: v1.29
+          skip-go-installation: true
 
   test:
     strategy:
