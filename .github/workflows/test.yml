@@ -35,6 +35,8 @@ jobs:
         go-version: [1.17.x]
         platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
+    container:
+      image: golang:latest
     steps:
       - name: Install Go
         if: success()
