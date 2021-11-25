@@ -44,12 +44,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: set path
-        run: |
-          export PATH=${GOROOT}/bin:$PATH
+        run: export PATH=${GOROOT}/bin:$PATH
       - name: deps
         run: go get -t unziploc
       - name: Run tests
-        run: sudo -E go test -v -covermode=count
+        run: go test -v -covermode=count
 
 
   coverage:
@@ -63,12 +62,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: set path
-        run: |
-          export PATH=${GOROOT}/bin:$PATH
+        run: export PATH=${GOROOT}/bin:$PATH
       - name: deps
         run: go get -t unziploc
       - name: Calc coverage
-        run: sudo -E go test -v -covermode=count -coverprofile=coverage.out
+        run: go test -v -covermode=count -coverprofile=coverage.out
       - name: Convert coverage.out to coverage.lcov
         uses: jandelgado/gcov2lcov-action@v1.0.6
       - name: Coveralls
