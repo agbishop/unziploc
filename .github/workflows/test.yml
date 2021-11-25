@@ -17,10 +17,12 @@ jobs:
           go-version: 1.17.x
       - name: Checkout code
         uses: actions/checkout@v2
-      - name: deps
+      - name: set path
         run: |
           export PATH=${GOROOT}/bin:$PATH
-          sudo -E go get -t unziploc
+          go version
+      - name: deps
+        run: go get -t unziploc
       - name: Run linters
         uses: golangci/golangci-lint-action@v2
         with:
