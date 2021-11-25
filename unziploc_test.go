@@ -23,7 +23,8 @@ func TestService(t *testing.T) {
 		{
 			archiveType: "rar",
 			tmp:         uuid.New().String(),
-		}, {
+		},
+		{
 			archiveType: "zip",
 		},
 	} {
@@ -57,7 +58,7 @@ func ArchiveTest(t *testing.T, test archiveTestData) {
 	tmpDataDir := filepath.Join(path, test.archiveType)
 	os.MkdirAll(tmpDataDir, os.ModeDir)
 	cpUtil.Copy(filepath.Join("testdata", test.archiveType), tmpDataDir)
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 	assertDataExists(t, path, s)
 	s.Stop()
 }
@@ -98,7 +99,7 @@ func TestExpire(t *testing.T) {
 	tracking, ok := s.Data[tmpDataDir]
 	assert.NotNil(t, tracking)
 	assert.True(t, ok)
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 	dne, ok := s.Data[tmpDataDir]
 	assert.Nil(t, dne)
 	assert.False(t, ok)

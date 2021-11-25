@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"github.com/google/uuid"
+	otaiCopy "github.com/otiai10/copy"
 	"io"
 	"io/fs"
 	"io/ioutil"
@@ -159,7 +161,28 @@ func (s *Service) unzipWithTmpDir(basePath, archivePath string, info fs.FileInfo
 		return err
 	}
 	if s.tmpDir != "" {
-		if err := os.Rename(unzipDir, filepath.Join(basePath, "extracted")); err != nil {
+		targetPath := filepath.Join(basePath, "extracted")
+		if err := os.Rename(unzipDir, targetPath); err != nil {
+			s.log.WithError(err).Warnf("failed to link, attempting copy")
+			filepath.Walk(unzipDir, func(path string, info fs.FileInfo, err error) error {
+				if strings.HasSuffix(path, "extracted") {
+					return nil
+				}
+				if info.IsDir() {
+					os.MkdirAll(info.Name(), os.ModeDir)
+				} else {
+					origPath := filepath.Clean(strings.ReplaceAll(path, unzipDir, targetPath))
+					copyPath := path + uuid.New().String()
+					copyPath = filepath.Clean(strings.ReplaceAll(copyPath, unzipDir, targetPath))
+					if err := otaiCopy.Copy(path, copyPath); err != nil {
+						return err
+					}
+					if err := os.Rename(copyPath, origPath); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
 			return err
 		}
 	}
