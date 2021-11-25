@@ -36,7 +36,7 @@ func ArchiveTest(t *testing.T, test archiveTestData) {
 	path, err := ioutil.TempDir("", "unziploc")
 	assert.NoError(t, err)
 	defer func() {
-		os.RemoveAll(path)
+		assert.NoError(t, os.RemoveAll(path))
 	}()
 	c := Config{
 		p:                   path,
@@ -46,9 +46,9 @@ func ArchiveTest(t *testing.T, test archiveTestData) {
 		pathExpireDuration:  time.Second * 10,
 	}
 	if test.tmp != "" {
-		os.MkdirAll(test.tmp, os.ModeDir)
+		assert.NoError(t, os.MkdirAll(test.tmp, os.ModeDir))
 		defer func() {
-			os.RemoveAll(test.tmp)
+			assert.NoError(t, os.RemoveAll(test.tmp))
 		}()
 		c.tmpDir = test.tmp
 	}
@@ -56,8 +56,8 @@ func ArchiveTest(t *testing.T, test archiveTestData) {
 	go s.Start()
 	time.Sleep(time.Second)
 	tmpDataDir := filepath.Join(path, test.archiveType)
-	os.MkdirAll(tmpDataDir, os.ModeDir)
-	cpUtil.Copy(filepath.Join("testdata", test.archiveType), tmpDataDir)
+	assert.NoError(t, os.MkdirAll(tmpDataDir, os.ModeDir))
+	assert.NoError(t, cpUtil.Copy(filepath.Join("testdata", test.archiveType), tmpDataDir))
 	time.Sleep(time.Second * 2)
 	assertDataExists(t, path, s)
 	s.Stop()
@@ -91,7 +91,7 @@ func TestExpire(t *testing.T) {
 	go s.Start()
 	time.Sleep(time.Second)
 	tmpDataDir := filepath.Join(path, "expire")
-	os.MkdirAll(tmpDataDir, os.ModeDir)
+	assert.NoError(t, os.MkdirAll(tmpDataDir, os.ModeDir))
 	f, err := ioutil.TempFile(tmpDataDir, "thing.zip")
 	assert.NoError(t, err)
 	f.Write([]byte("Hello"))
