@@ -8,8 +8,17 @@ import (
 	"github.com/gobuffalo/envy"
 )
 
+const (
+	pathsENV         = "PATHS"
+	writeDelayENV    = "WRITE_DELAY"
+	pathExpireDurENV = "PATH_EXPIRE_DURATION"
+	timerTickerENV   = "TIMER_TICKER"
+	tmpDirENV        = "TMP_DIR"
+)
+
 type (
 	Config struct {
+		tmpDir              string
 		p                   string
 		paths               []string
 		writeDelayDuration  time.Duration
@@ -21,6 +30,7 @@ type (
 func (s *Service) cli() Config {
 	c := Config{}
 	flag.StringVar(&c.p, "paths", envy.Get(pathsENV, ""), "comma seperated list of directories to watch")
+	flag.StringVar(&c.tmpDir, "tmp-dir", envy.Get(tmpDirENV, ""), "tmp dir to use. must be the same disk")
 
 	writeDelay, err := time.ParseDuration(envy.Get(writeDelayENV, "1m"))
 	if err != nil {

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"io"
 	"io/fs"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -59,13 +61,6 @@ func New(c *Config) *Service {
 
 	return &s
 }
-
-const (
-	pathsENV         = "PATHS"
-	writeDelayENV    = "WRITE_DELAY"
-	pathExpireDurENV = "PATH_EXPIRE_DURATION"
-	timerTickerENV   = "TIMER_TICKER"
-)
 
 func IsPathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
@@ -147,18 +142,45 @@ func validSuffix() []string {
 	return []string{"rar", "tar", "zip"}
 }
 
+func (s *Service) unzipWithTmpDir(basePath, archivePath string, info fs.FileInfo) (err error) {
+	unzipDir := basePath
+	if s.tmpDir != "" {
+		tmpDir, err := ioutil.TempDir(s.tmpDir, info.Name())
+		if err != nil {
+			return err
+		}
+		unzipDir = filepath.Join(tmpDir, "extracted")
+		os.MkdirAll(unzipDir, os.ModeDir)
+		defer func() {
+			os.RemoveAll(tmpDir)
+		}()
+	}
+	if err := archiver.Unarchive(archivePath, unzipDir); err != nil {
+		return err
+	}
+	if s.tmpDir != "" {
+		if err := os.Rename(unzipDir, filepath.Join(basePath, "extracted")); err != nil {
+			return err
+		}
+	}
+	return err
+}
+
 func (s *Service) ProcessNewRarFile(path string) {
 	s.log.Debugf("processing %s...", path)
 	suffixes := validSuffix()
 	walkErr := filepath.Walk(path, func(p string, info fs.FileInfo, err error) error {
 		for i := range suffixes {
 			if strings.HasSuffix(p, suffixes[i]) && !info.IsDir() {
-				return archiver.Unarchive(p, path)
+				if err := s.unzipWithTmpDir(path, p, info); err != nil {
+					return err
+				}
+				return io.EOF // this is to break the loop early
 			}
 		}
 		return nil
 	})
-	if walkErr != nil {
+	if walkErr != nil && walkErr != io.EOF {
 		s.log.Errorf("Walk Err %s", walkErr)
 	}
 	s.mux.Lock()
