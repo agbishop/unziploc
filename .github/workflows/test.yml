@@ -17,8 +17,6 @@ jobs:
           go-version: 1.17.x
       - name: Checkout code
         uses: actions/checkout@v2
-      - name: deps
-        run: sudo -E go get -t unziploc
       - name: Run linters
         uses: golangci/golangci-lint-action@v2
         with:
