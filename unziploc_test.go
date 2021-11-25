@@ -59,19 +59,19 @@ func ArchiveTest(t *testing.T, test archiveTestData) {
 	assert.NoError(t, os.MkdirAll(tmpDataDir, os.ModeDir))
 	assert.NoError(t, cpUtil.Copy(filepath.Join("testdata", test.archiveType), tmpDataDir))
 	time.Sleep(time.Second * 2)
-	assertDataExists(t, path, s)
+	assertDataExists(t, path)
 	s.Stop()
 }
 
-func assertDataExists(t *testing.T, path string, s *Service) {
+func assertDataExists(t *testing.T, path string) {
 	dataFound := false
-	filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+	assert.NoError(t, filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
 		if strings.HasSuffix(path, "somestuff.txt") {
 			dataFound = true
 			return nil
 		}
 		return nil
-	})
+	}))
 	assert.Truef(t, dataFound, "Data not found")
 }
 
@@ -79,7 +79,7 @@ func TestExpire(t *testing.T) {
 	path, err := ioutil.TempDir("", "unziploc")
 	assert.NoError(t, err)
 	defer func() {
-		os.RemoveAll(path)
+		assert.NoError(t, os.RemoveAll(path))
 	}()
 	s := New(&Config{
 		p:                   path,
@@ -94,8 +94,9 @@ func TestExpire(t *testing.T) {
 	assert.NoError(t, os.MkdirAll(tmpDataDir, os.ModeDir))
 	f, err := ioutil.TempFile(tmpDataDir, "thing.zip")
 	assert.NoError(t, err)
-	f.Write([]byte("Hello"))
-	f.Close()
+	_, WErr := f.Write([]byte("Hello"))
+	assert.NoError(t, WErr)
+	assert.NoError(t, f.Close())
 	tracking, ok := s.Data[tmpDataDir]
 	assert.NotNil(t, tracking)
 	assert.True(t, ok)
