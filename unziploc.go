@@ -49,10 +49,8 @@ func New(c *Config) *Service {
 	ticker := time.NewTimer(s.tickerTimerDuration)
 	go func() {
 		for {
-			select {
-			case z := <-ticker.C:
-				s.CheckAndUnzip(ticker, z)
-			}
+			z := <-ticker.C
+			s.CheckAndUnzip(ticker, z)
 		}
 	}()
 	if c != nil {
