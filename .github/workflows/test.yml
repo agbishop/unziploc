@@ -37,6 +37,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     container:
       image: golang:latest
+      options: --user root
     steps:
       - name: Install Go
         if: success()
@@ -50,11 +51,14 @@ jobs:
       - name: deps
         run: go get -t unziploc
       - name: Run tests
-        run: sudo -E go test -v -covermode=count
+        run: go test -v -covermode=count
 
 
   coverage:
     runs-on: ubuntu-latest
+    container:
+      image: golang:latest
+      options: --user root
     steps:
       - name: Install Go
         if: success()
@@ -68,7 +72,7 @@ jobs:
       - name: deps
         run: go get -t unziploc
       - name: Calc coverage
-        run: sudo -E go test -v -covermode=count -coverprofile=coverage.out
+        run: go test -v -covermode=count -coverprofile=coverage.out
       - name: Convert coverage.out to coverage.lcov
         uses: jandelgado/gcov2lcov-action@v1.0.6
       - name: Coveralls
