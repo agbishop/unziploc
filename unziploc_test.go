@@ -97,6 +97,7 @@ func TestExpire(t *testing.T) {
 	_, WErr := f.Write([]byte("Hello"))
 	assert.NoError(t, WErr)
 	assert.NoError(t, f.Close())
+	time.Sleep(time.Second)
 	tracking, ok := s.Data[tmpDataDir]
 	assert.NotNil(t, tracking)
 	assert.True(t, ok)
