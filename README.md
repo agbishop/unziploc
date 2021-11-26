@@ -1,4 +1,7 @@
 # unziploc
+[![run tests](https://github.com/agbishop/unziploc/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/agbishop/unziploc/actions/workflows/test.yml)
+
+
 Watches for zips/tars/rars and unzips them
 
 Options:
