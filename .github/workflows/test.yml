@@ -50,7 +50,7 @@ jobs:
       - name: deps
         run: go get -t unziploc
       - name: Run tests
-        run: go test -v -covermode=count
+        run: sudo -E go test -v -covermode=count
 
 
   coverage:
@@ -68,7 +68,7 @@ jobs:
       - name: deps
         run: go get -t unziploc
       - name: Calc coverage
-        run: go test -v -covermode=count -coverprofile=coverage.out
+        run: sudo -E go test -v -covermode=count -coverprofile=coverage.out
       - name: Convert coverage.out to coverage.lcov
         uses: jandelgado/gcov2lcov-action@v1.0.6
       - name: Coveralls
