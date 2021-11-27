@@ -132,7 +132,11 @@ func (s *Service) CheckAndUnzip(ticker *time.Timer, z time.Time) {
 			delete(s.Data, path)
 		} else if z.After(d.Start) && !s.Data[path].Process {
 			s.Data[path].Process = true
-			go s.ProcessNewRarFile(path)
+			go func() {
+				if err := s.ProcessNewRarFile(path); err != nil {
+					s.log.WithError(err).Error("error extracting")
+				}
+			}()
 		}
 	}
 	s.mux.Unlock()
@@ -143,7 +147,7 @@ func validSuffix() []string {
 	return []string{".rar", ".tar", ".zip"}
 }
 
-func (s *Service) unzip(basePath, archivePath string, info fs.FileInfo) (err error) {
+func (s *Service) unzip(basePath, archivePath string) (err error) {
 	return archiver.Unarchive(archivePath, basePath)
 }
 
@@ -183,12 +187,11 @@ func (s *Service) moveExtracted(basePath, unzipDir string) (err error) {
 }
 
 func (s *Service) unzipWithTmpDir(basePath, archivePath string, info fs.FileInfo) (err error) {
-	unzipDir := basePath
 	tmpDir, err := ioutil.TempDir(s.tmpDir, info.Name())
 	if err != nil {
 		return err
 	}
-	unzipDir = filepath.Join(tmpDir, "extracted")
+	unzipDir := filepath.Join(tmpDir, "extracted")
 	if err := os.MkdirAll(unzipDir, os.ModeDir); err != nil {
 		return err
 	}
@@ -223,7 +226,7 @@ func (s *Service) findAndProcessArchive(path string) (err error) {
 						return err
 					}
 				} else {
-					if err := s.unzip(path, archiveFile, info); err != nil {
+					if err := s.unzip(path, archiveFile); err != nil {
 						return err
 					}
 				}
