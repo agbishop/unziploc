@@ -46,20 +46,21 @@ func New(c *Config) *Service {
 	}
 	s.log = logger
 	s.Data = map[string]*WorkerData{}
-	ticker := time.NewTimer(s.tickerTimerDuration)
-	go func() {
-		for {
-			z := <-ticker.C
-			s.CheckAndUnzip(ticker, z)
-		}
-	}()
 	if c != nil {
 		s.Config = *c
 	} else {
 		s.Config = s.cli()
 	}
-
+	go s.fileProcessorTimerLoop()
 	return &s
+}
+
+func (s *Service) fileProcessorTimerLoop() {
+	ticker := time.NewTimer(s.tickerTimerDuration)
+	for {
+		z := <-ticker.C
+		s.CheckAndUnzip(ticker, z)
+	}
 }
 
 func IsPathExists(path string) (bool, error) {
@@ -139,69 +140,92 @@ func (s *Service) CheckAndUnzip(ticker *time.Timer, z time.Time) {
 }
 
 func validSuffix() []string {
-	return []string{"rar", "tar", "zip"}
+	return []string{".rar", ".tar", ".zip"}
+}
+
+func (s *Service) unzip(basePath, archivePath string, info fs.FileInfo) (err error) {
+	return archiver.Unarchive(archivePath, basePath)
+}
+
+func (s *Service) copyWithObfuscation(unzipDir, targetPath string) (err error) {
+	return filepath.Walk(unzipDir, func(path string, info fs.FileInfo, err error) error {
+		if strings.HasSuffix(path, "extracted") {
+			return nil
+		}
+		if info.IsDir() {
+			if err := os.MkdirAll(info.Name(), os.ModeDir); err != nil {
+				return err
+			}
+		} else {
+			origPath := filepath.Clean(strings.ReplaceAll(path, unzipDir, targetPath))
+			copyPath := path + uuid.New().String()
+			copyPath = filepath.Clean(strings.ReplaceAll(copyPath, unzipDir, targetPath))
+			if err := otaiCopy.Copy(path, copyPath); err != nil {
+				return err
+			}
+			if err := os.Rename(copyPath, origPath); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// attempts to move result, if an error occurs when trying to rename,
+// then attempt to copy recursively. The copy will copy files as uuids then rename
+func (s *Service) moveExtracted(basePath, unzipDir string) (err error) {
+	targetPath := filepath.Join(basePath, "extracted")
+	if err := os.Rename(unzipDir, targetPath); err != nil {
+		s.log.WithError(err).Warnf("failed to link, attempting copy")
+		return s.copyWithObfuscation(unzipDir, targetPath)
+	}
+	return
 }
 
 func (s *Service) unzipWithTmpDir(basePath, archivePath string, info fs.FileInfo) (err error) {
 	unzipDir := basePath
-	if s.tmpDir != "" {
-		tmpDir, err := ioutil.TempDir(s.tmpDir, info.Name())
-		if err != nil {
-			return err
-		}
-		unzipDir = filepath.Join(tmpDir, "extracted")
-		if err := os.MkdirAll(unzipDir, os.ModeDir); err != nil {
-			return err
-		}
-		defer func() {
-			if err := os.RemoveAll(tmpDir); err != nil {
-				s.log.WithError(err).Error("clean up err")
-			}
-
-		}()
+	tmpDir, err := ioutil.TempDir(s.tmpDir, info.Name())
+	if err != nil {
+		return err
 	}
+	unzipDir = filepath.Join(tmpDir, "extracted")
+	if err := os.MkdirAll(unzipDir, os.ModeDir); err != nil {
+		return err
+	}
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			s.log.WithError(err).Error("clean up err")
+		}
+
+	}()
 	if err := archiver.Unarchive(archivePath, unzipDir); err != nil {
 		return err
 	}
-	if s.tmpDir != "" {
-		targetPath := filepath.Join(basePath, "extracted")
-		if err := os.Rename(unzipDir, targetPath); err != nil {
-			s.log.WithError(err).Warnf("failed to link, attempting copy")
-			err = filepath.Walk(unzipDir, func(path string, info fs.FileInfo, err error) error {
-				if strings.HasSuffix(path, "extracted") {
-					return nil
-				}
-				if info.IsDir() {
-					if err := os.MkdirAll(info.Name(), os.ModeDir); err != nil {
-						return err
-					}
-				} else {
-					origPath := filepath.Clean(strings.ReplaceAll(path, unzipDir, targetPath))
-					copyPath := path + uuid.New().String()
-					copyPath = filepath.Clean(strings.ReplaceAll(copyPath, unzipDir, targetPath))
-					if err := otaiCopy.Copy(path, copyPath); err != nil {
-						return err
-					}
-					if err := os.Rename(copyPath, origPath); err != nil {
-						return err
-					}
-				}
-				return nil
-			})
-			return err
-		}
+	if err := s.moveExtracted(basePath, unzipDir); err != nil {
+		return err
 	}
+
 	return err
 }
 
-func (s *Service) ProcessNewRarFile(path string) {
-	s.log.Debugf("processing %s...", path)
+func (s *Service) findAndProcessArchive(path string) (err error) {
 	suffixes := validSuffix()
-	walkErr := filepath.Walk(path, func(p string, info fs.FileInfo, err error) error {
+	walkErr := filepath.Walk(path, func(archiveFile string, info fs.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
 		for i := range suffixes {
-			if strings.HasSuffix(p, suffixes[i]) && !info.IsDir() {
-				if err := s.unzipWithTmpDir(path, p, info); err != nil {
-					return err
+			s.log.Debugf("file %s", archiveFile)
+			if strings.HasSuffix(archiveFile, suffixes[i]) && !info.IsDir() {
+				s.log.Infof("Found archive %s", archiveFile)
+				if s.tmpDir != "" {
+					if err := s.unzipWithTmpDir(path, archiveFile, info); err != nil {
+						return err
+					}
+				} else {
+					if err := s.unzip(path, archiveFile, info); err != nil {
+						return err
+					}
 				}
 				return io.EOF // this is to break the loop early
 			}
@@ -210,11 +234,21 @@ func (s *Service) ProcessNewRarFile(path string) {
 	})
 	if walkErr != nil && walkErr != io.EOF {
 		s.log.Errorf("Walk Err %s", walkErr)
+		return walkErr
+	}
+	return nil
+}
+
+func (s *Service) ProcessNewRarFile(path string) (err error) {
+	s.log.Debugf("processing %s...", path)
+	if err := s.findAndProcessArchive(path); err != nil {
+		return err
 	}
 	s.mux.Lock()
 	s.log.Infof("Finished processing %s", path)
 	delete(s.Data, path)
 	s.mux.Unlock()
+	return nil
 }
 
 func (s *Service) NewEvent(event fsnotify.Event) {
