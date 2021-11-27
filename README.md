@@ -11,10 +11,10 @@ WRITE_DELAY = 1m #How long to wait after the last write to check for a zip ( for
 PATH_EXPIRE_DURATION = 1h # How long to wait before removing the new path. This is for errors or stale data
 TIMER_TICKER = 10s # How long to timer loops ticks.
 DEBUG = true # Debug logging
-TEMP_DIR=/path/to/tmp/dir
+TMP_DIR=/path/to/tmp/dir
 ```
 
-NOTES ABOUT TEMP_DIR:
+NOTES ABOUT TMP_DIR:
 
 Temp dir is for specifying what temp dir to extract the archive to. Due to limitation in docker, you can't rename across
 filesystems. If an error occurs while trying to rename the file, unziploc will attempt to copy all files over.
