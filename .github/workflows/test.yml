@@ -82,7 +82,7 @@ jobs:
           path-to-lcov: coverage.lcov
   docker:
     runs-on: ubuntu-latest
-    if: success()
+    if: (needs.lint.result == 'success' && needs.test.result == 'success')
     environment: default
     steps:
       -
