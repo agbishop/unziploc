@@ -82,6 +82,8 @@ jobs:
           path-to-lcov: coverage.lcov
   docker:
     runs-on: ubuntu-latest
+    if: success()
+    environment: default
     steps:
       -
         name: Checkout
@@ -95,7 +97,7 @@ jobs:
       -
         name: Login to DockerHub
         uses: docker/login-action@v1
-        environment: default
+
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
