@@ -151,7 +151,7 @@ func (s *Service) unzip(basePath, archivePath string) (err error) {
 	return archiver.Unarchive(archivePath, basePath)
 }
 
-func (s *Service) copyWithObfuscation(unzipDir, targetPath string) (err error) {
+func CopyWithObfuscation(unzipDir, targetPath string) (err error) {
 	return filepath.Walk(unzipDir, func(path string, info fs.FileInfo, err error) error {
 		if strings.HasSuffix(path, "extracted") {
 			return nil
@@ -181,7 +181,7 @@ func (s *Service) moveExtracted(basePath, unzipDir string) (err error) {
 	targetPath := filepath.Join(basePath, "extracted")
 	if err := os.Rename(unzipDir, targetPath); err != nil {
 		s.log.WithError(err).Warnf("failed to link, attempting copy")
-		return s.copyWithObfuscation(unzipDir, targetPath)
+		return CopyWithObfuscation(unzipDir, targetPath)
 	}
 	return
 }
@@ -199,7 +199,6 @@ func (s *Service) unzipWithTmpDir(basePath, archivePath string, info fs.FileInfo
 		if err := os.RemoveAll(tmpDir); err != nil {
 			s.log.WithError(err).Error("clean up err")
 		}
-
 	}()
 	if err := archiver.Unarchive(archivePath, unzipDir); err != nil {
 		return err

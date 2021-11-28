@@ -122,3 +122,24 @@ func TestIsPathExists(t *testing.T) {
 	assert.True(t, exists)
 	assert.NoError(t, err)
 }
+
+func TestCopyWithObfuscation(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", "unziploc")
+	assert.NoError(t, err)
+	path := filepath.Join(tmpDir, "extracted", "stuff", "things")
+	assert.NoError(t, os.MkdirAll(path, os.ModeDir))
+	f, err := os.Create(filepath.Join(path, "test.file"))
+	assert.NoError(t, err)
+	_, WErr := f.Write([]byte("Hello"))
+	assert.NoError(t, WErr)
+	assert.NoError(t, f.Close())
+	tmpDir2, err := ioutil.TempDir("", "unziploc")
+	assert.NoError(t, err)
+	CopyWithObfuscation(tmpDir, tmpDir2)
+	defer func() {
+		assert.NoError(t, os.RemoveAll(tmpDir))
+		assert.NoError(t, os.RemoveAll(tmpDir2))
+	}()
+	copyPath := filepath.Join(tmpDir2, "extracted", "stuff", "things", "test.file")
+	assert.FileExists(t, copyPath)
+}
