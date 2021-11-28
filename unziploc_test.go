@@ -135,7 +135,7 @@ func TestCopyWithObfuscation(t *testing.T) {
 	assert.NoError(t, f.Close())
 	tmpDir2, err := ioutil.TempDir("", "unziploc")
 	assert.NoError(t, err)
-	CopyWithObfuscation(tmpDir, tmpDir2)
+	assert.NoError(t, CopyWithObfuscation(tmpDir, tmpDir2))
 	defer func() {
 		assert.NoError(t, os.RemoveAll(tmpDir))
 		assert.NoError(t, os.RemoveAll(tmpDir2))
